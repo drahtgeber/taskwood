@@ -151,7 +151,7 @@ export function compose(sp: Species, f: Frame): Grid {
     const drawEye = (e: Eye, ax: number, right: boolean) => {
       const ft = EYES[e];
       const map = right && ft.mirror ? mirrorMap(ft.map) : ft.map;
-      const move = e === "bead" || e === "wide";
+      const move = e === "bead" || e === "wide" || e === "halflid";
       const w = width(ft.map);
       const x = right ? ax + 2 - w - ft.dx : ax + ft.dx;
       const lid = e === "closed" || e === "happy" || e === "dizzy" ? sp.lidSubst : undefined;

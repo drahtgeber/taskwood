@@ -1,6 +1,6 @@
 [package]
 name = "taskwood"
-version = "1.4.1"
+version = "1.4.2"
 description = "Taskwood – Aufgaben mit Pixel-Tieren"
 authors = ["Drahtgeber"]
 license = "MIT"

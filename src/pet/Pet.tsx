@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
+import { cursorPosition, getCurrentWindow } from "@tauri-apps/api/window";
 import type { AnimalKind } from "../sprites";
 import { MOOD_CLIPS, STILLS } from "./clips";
 import { H, W, rgba } from "./render";
@@ -37,8 +38,11 @@ type Props = {
 
 const CUDDLE_AFTER = 1400; // ms Mausstillstand
 const PET_FLIPS = 3; // so viele Richtungswechsel kurz hintereinander gelten als Streicheln
-const PET_WINDOW = 1300; // ms, in denen die Richtungswechsel liegen müssen
-const PET_END = 900; // ms ohne neuen Strich: Streicheln vorbei
+const PET_WINDOW = 1600; // ms, in denen die Richtungswechsel liegen müssen
+const PET_END = 1500; // ms ohne Mausbewegung am Tier: Streicheln vorbei (auch wenn ein Strich über den Rand ging)
+const PET_AWAKE = 60000; // so lange bleibt ein gestreicheltes Tier danach wach
+const LOOK_POLL = 120; // ms: Mausposition abfragen, auch außerhalb des Fensters
+const NEAR = 220; // logische Pixel um den Kopf: Maus in der Nähe, das Tier schaut hin
 const WAKE_MS = 20000; // so lange bleibt ein müdes Tier nach Erscheinen, Verschieben, Ereignis oder Maus wach
 const EVENT_FRESH = 2000; // ältere Ereignisse nicht nachspielen (z. B. nach Umschalten der Ansicht)
 const CROP = { x: 10, y: 12, w: 20, h: 19 };
@@ -60,7 +64,8 @@ export default function Pet(props: Props) {
 function Engine({ sp, mood, scale = 1, event, held = false, interactive, still, crop, reduced, forceHover, forceCuddle, onPet, stash = 0, wear }: Props & { sp: Species }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   // pet/petDir: wird gerade gestreichelt, Richtung des letzten Strichs (-1 links, 1 rechts)
-  const live = useRef({ mood, held, stash, wear, hover: false, cuddle: false, pet: false, petDir: 1 as -1 | 1, gaze: [0, 0] as [number, number] });
+  // near: Maus in der Nähe (auch außerhalb des Fensters), dann folgen die Augen
+  const live = useRef({ mood, held, stash, wear, hover: false, near: false, cuddle: false, pet: false, petDir: 1 as -1 | 1, gaze: [0, 0] as [number, number] });
   live.current.mood = mood;
   live.current.stash = stash;
   live.current.wear = wear;
@@ -71,8 +76,8 @@ function Engine({ sp, mood, scale = 1, event, held = false, interactive, still, 
   // awakeUntil/awakeAs: kurze Wachphase, bevor ein schlafendes Tier wieder einschläft
   const st = useRef({ clip: "", i: -1, event: false, timer: 0, blinkAt: 0, lastMood: "", awakeUntil: 0, awakeAs: "idle" });
 
-  const stayAwake = (as: "idle" | "peek") => {
-    st.current.awakeUntil = performance.now() + WAKE_MS;
+  const stayAwake = (as: "idle" | "peek", ms = WAKE_MS) => {
+    st.current.awakeUntil = Math.max(st.current.awakeUntil, performance.now() + ms);
     st.current.awakeAs = as;
   };
   const isStatic = still || reduced || reducedMotion();
@@ -107,7 +112,8 @@ function Engine({ sp, mood, scale = 1, event, held = false, interactive, still, 
     if (l.mood === "alarm") return "alarm";
     if (l.mood === "event") return "appointment";
     if (l.pet && sp.clips.pet) return "pet";
-    if (l.hover && l.mood === "sleep") return "peek";
+    // Maus auf einem schlafenden Tier: eingerollt hochgucken, außer es ist gerade ohnehin wach (z. B. nach Streicheln)
+    if (l.hover && l.mood === "sleep" && performance.now() >= st.current.awakeUntil) return "peek";
     if (l.cuddle && l.mood !== "sleep") return "cuddle";
     if (l.mood === "sleep") {
       const s = st.current;
@@ -132,8 +138,9 @@ function Engine({ sp, mood, scale = 1, event, held = false, interactive, still, 
     }
     // Beim Streicheln schmiegt sich der Kopf in die Richtung der Hand
     if (s.clip === "pet") out = { ...out, hx: l.petDir, turn: l.petDir };
-    const openEyes = !out.eyes || out.eyes === "bead";
-    if (openEyes && l.hover && !s.event && s.clip !== "held") out = { ...out, gaze: l.gaze };
+    // Offene Augen (auch halb geschlossene bei Langeweile) können der Maus folgen
+    const openEyes = !out.eyes || out.eyes === "bead" || out.eyes === "wide" || out.eyes === "halflid";
+    if (openEyes && (l.hover || l.near) && !s.event && s.clip !== "held") out = { ...out, gaze: l.gaze };
     const now = performance.now();
     if (openEyes && now > s.blinkAt) {
       s.blinkAt = now + 2500 + Math.random() * 4000;
@@ -238,8 +245,8 @@ function Engine({ sp, mood, scale = 1, event, held = false, interactive, still, 
     stroke.current.flips = [];
     if (!l.pet) return;
     l.pet = false;
-    // Hinterher noch eine Weile zufrieden wach
-    stayAwake("idle");
+    // Hinterher noch eine ganze Weile zufrieden wach
+    stayAwake("idle", PET_AWAKE);
     reconsider();
   };
   const setHover = (h: boolean) => {
@@ -248,7 +255,7 @@ function Engine({ sp, mood, scale = 1, event, held = false, interactive, still, 
     if (forceHover === undefined) l.hover = h;
     if (!h && forceCuddle === undefined) l.cuddle = false;
     window.clearTimeout(cuddleTimer.current);
-    if (!h) stopPet();
+    // Verlassen beendet das Streicheln nicht sofort: Striche gehen oft über den Rand hinaus
     reconsider();
   };
   const trackStroke = (x: number, minTravel: number) => {
@@ -257,6 +264,11 @@ function Engine({ sp, mood, scale = 1, event, held = false, interactive, still, 
     const dx = x - k.x;
     k.x = x;
     if (Math.abs(dx) < 1) return;
+    // Solange die Hand sich bewegt, geht das Streicheln weiter
+    if (l.pet) {
+      window.clearTimeout(k.end);
+      k.end = window.setTimeout(stopPet, PET_END);
+    }
     const dir = dx > 0 ? 1 : -1;
     if (dir === k.dir) return;
     // Richtungswechsel zählt nur nach einem richtigen Strich, nicht bei Zittern
@@ -264,10 +276,7 @@ function Engine({ sp, mood, scale = 1, event, held = false, interactive, still, 
     if (k.dir && Math.abs(x - k.anchor) >= minTravel) {
       k.flips = [...k.flips.filter(t => now - t < PET_WINDOW), now];
       l.petDir = k.dir as -1 | 1;
-      if (l.pet) {
-        window.clearTimeout(k.end);
-        k.end = window.setTimeout(stopPet, PET_END);
-      } else if (k.flips.length >= PET_FLIPS && !l.held) {
+      if (!l.pet && k.flips.length >= PET_FLIPS && !l.held) {
         l.pet = true;
         l.cuddle = false;
         window.clearTimeout(k.end);
@@ -279,17 +288,18 @@ function Engine({ sp, mood, scale = 1, event, held = false, interactive, still, 
     k.dir = dir;
     k.anchor = x - dx;
   };
+  // Blickrichtung aus dem Abstand zur Kopfmitte (etwa 49 % der Breite, 45 % der Höhe der Leinwand)
+  const lookAt = (dx: number, dy: number, r: DOMRect) => {
+    const tx = r.width * 0.12;
+    const ty = r.height * 0.12;
+    live.current.gaze = [dx > tx ? 1 : dx < -tx ? -1 : 0, dy > ty ? 1 : dy < -ty ? -1 : 0];
+  };
   const onMove = (e: ReactMouseEvent) => {
     const l = live.current;
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    // Kopfmitte liegt etwa bei 48 % der Breite und 45 % der Höhe der Leinwand
-    const dx = e.clientX - (r.left + r.width * 0.49);
-    const dy = e.clientY - (r.top + r.height * 0.45);
-    const tx = r.width * 0.12;
-    const ty = r.height * 0.12;
-    l.gaze = [dx > tx ? 1 : dx < -tx ? -1 : 0, dy > ty ? 1 : dy < -ty ? -1 : 0];
+    lookAt(e.clientX - (r.left + r.width * 0.49), e.clientY - (r.top + r.height * 0.45), r);
     if (!l.hover && forceHover === undefined) setHover(true);
-    trackStroke(e.clientX, Math.max(4, r.width * 0.12));
+    trackStroke(e.clientX, Math.max(3, r.width * 0.08));
     if (forceCuddle !== undefined || l.pet) return;
     if (l.cuddle) {
       l.cuddle = false;
@@ -302,6 +312,39 @@ function Engine({ sp, mood, scale = 1, event, held = false, interactive, still, 
       reconsider();
     }, CUDDLE_AFTER);
   };
+
+  // Maus in der Nähe, auch außerhalb des kleinen Fensters: Augen folgen ihr, ein waches Tier bleibt wach
+  useEffect(() => {
+    if (!interactive || isStatic) return;
+    const win = getCurrentWindow();
+    let alive = true;
+    let busy = false;
+    const poll = async () => {
+      const c = canvas.current;
+      if (busy || !c || document.hidden) return;
+      busy = true;
+      try {
+        const [cur, pos, scale] = await Promise.all([cursorPosition(), win.innerPosition(), win.scaleFactor()]);
+        if (!alive) return;
+        const r = c.getBoundingClientRect();
+        const dx = (cur.x - pos.x) / scale - (r.left + r.width * 0.49);
+        const dy = (cur.y - pos.y) / scale - (r.top + r.height * 0.45);
+        const l = live.current;
+        l.near = Math.hypot(dx, dy) < Math.max(NEAR, r.width * 1.5);
+        if (l.near && !l.hover) lookAt(dx, dy, r);
+        if (l.near && l.mood === "sleep" && performance.now() < st.current.awakeUntil) stayAwake(st.current.awakeAs as "idle" | "peek");
+      } catch {
+      } finally {
+        busy = false;
+      }
+    };
+    const id = window.setInterval(poll, LOOK_POLL);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+      live.current.near = false;
+    };
+  }, [interactive, isStatic]);
 
   useEffect(
     () => () => {
