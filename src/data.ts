@@ -37,6 +37,19 @@ export type CalEvent = {
   source?: string; // aus .ics importiert: stabile Kennung, damit erneuter Import nichts verdoppelt
 };
 
+// Vorlesungsnotiz: was in der Vorlesung eines Projekts (Fachs) an einem Tag dran war.
+// Höchstens eine pro Projekt und Tag; from/to = Foliennummern.
+export type LectureNote = {
+  id: string;
+  projectId: string;
+  date: string; // YYYY-MM-DD
+  topic?: string;
+  from?: number;
+  to?: number;
+  note?: string;
+  at: number; // zuletzt geändert
+};
+
 export type Task = {
   id: string;
   projectId: string;
@@ -84,6 +97,7 @@ export type Data = {
   timers: Record<string, Timer>;
   lectures: Lecture[]; // Stundenplan
   events: CalEvent[]; // Kalender
+  lectureNotes: LectureNote[]; // Vorlesungsnotizen (Thema, bis Folie …)
   doneTotal: number; // jemals erledigte Aufgaben (schaltet Accessoires frei; bleibt beim Leeren des Verlaufs)
   dam: DamScores; // Highscores des Spiels "Dammbau"
 };
@@ -113,9 +127,35 @@ function fresh(): Data {
     timers: {},
     lectures: sanitizeLectures(undefined),
     events: [],
+    lectureNotes: [],
     doneTotal: 0,
     dam: emptyScores(),
   };
+}
+
+const slideNo = (n: any) => (Number.isInteger(n) && n > 0 && n < 100000 ? n : undefined);
+const optText = (s: any) => (typeof s === "string" && s.trim() ? s : undefined);
+
+// Ungültige Vorlesungsnotizen verwerfen; pro Projekt und Tag nur die zuletzt geänderte behalten
+function sanitizeLectureNotes(list: any, projectIds: Set<string>): LectureNote[] {
+  const byKey = new Map<string, LectureNote>();
+  for (const n of Array.isArray(list) ? list : []) {
+    if (!n || typeof n.id !== "string" || !projectIds.has(n.projectId) || !/^\d{4}-\d{2}-\d{2}$/.test(n.date)) continue;
+    const clean: LectureNote = {
+      id: n.id,
+      projectId: n.projectId,
+      date: n.date,
+      topic: optText(n.topic),
+      from: slideNo(n.from),
+      to: slideNo(n.to),
+      note: optText(n.note),
+      at: Number.isFinite(n.at) ? n.at : 0,
+    };
+    const key = `${clean.projectId}|${clean.date}`;
+    const prev = byKey.get(key);
+    if (!prev || clean.at >= prev.at) byKey.set(key, clean);
+  }
+  return [...byKey.values()];
 }
 
 // Version 1: { tabs, activeTab, tasks[tabId] } -> alle Bereiche werden Projekte im Ordner "Allgemein"
@@ -143,6 +183,7 @@ function migrateV1(d: any): Data {
     timers: {},
     lectures: sanitizeLectures(undefined),
     events: [],
+    lectureNotes: [],
     doneTotal: 0,
     dam: emptyScores(),
   };
@@ -179,7 +220,8 @@ function sanitize(d: Data): Data {
   );
   // Ältere Stände: Zähler aus dem vorhandenen Verlauf schätzen
   const doneTotal = typeof d.doneTotal === "number" && d.doneTotal >= 0 ? d.doneTotal : tasks.filter(t => t.doneAt).length;
-  return { version: 2, folders, projects, activeFolder, activeProject, tasks, timers, lectures, events, doneTotal, dam: sanitizeScores(d.dam) };
+  const lectureNotes = sanitizeLectureNotes(d.lectureNotes, new Set(projects.map(p => p.id)));
+  return { version: 2, folders, projects, activeFolder, activeProject, tasks, timers, lectures, events, lectureNotes, doneTotal, dam: sanitizeScores(d.dam) };
 }
 
 // Beliebigen gespeicherten oder importierten Stand ins aktuelle Format bringen; null = unbrauchbar

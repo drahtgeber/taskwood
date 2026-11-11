@@ -9,16 +9,17 @@ type Props = {
   onChange: (lectures: Lecture[]) => void;
   week: boolean;
   onWeek: (week: boolean) => void;
-  projectFor: (title: string) => string | null; // Name des passenden Projekts
-  onOpen: (title: string) => void;
+  projects: { id: string; name: string }[]; // zur Auswahl beim Verknüpfen
+  projectFor: (l: Lecture) => string | null; // Name des passenden Projekts
+  onOpen: (l: Lecture) => void;
 };
 
-type Draft = { id: string | null; day: number; start: string; end: string; title: string; room: string; color: string };
+type Draft = { id: string | null; day: number; start: string; end: string; title: string; room: string; color: string; projectId: string };
 
 const PX_PER_MIN = 0.72;
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-export default function Timetable({ lectures, onChange, week, onWeek, projectFor, onOpen }: Props) {
+export default function Timetable({ lectures, onChange, week, onWeek, projects, projectFor, onOpen }: Props) {
   const today = weekday();
   const [day, setDay] = useState(today ?? 1);
   const [now, setNow] = useState(minuteOfDay);
@@ -35,7 +36,7 @@ export default function Timetable({ lectures, onChange, week, onWeek, projectFor
   // ---------- Bearbeiten ----------
 
   const openEdit = (l: Lecture) => {
-    setDraft({ id: l.id, day: l.day, start: hhmm(l.start), end: hhmm(l.end), title: l.title, room: l.room, color: l.color });
+    setDraft({ id: l.id, day: l.day, start: hhmm(l.start), end: hhmm(l.end), title: l.title, room: l.room, color: l.color, projectId: l.projectId ?? "" });
     setConfirmDel(false);
   };
 
@@ -44,7 +45,7 @@ export default function Timetable({ lectures, onChange, week, onWeek, projectFor
     const list = lecturesOn(lectures, d);
     const last = list[list.length - 1];
     const start = last ? Math.min(last.end + 15, 18 * 60) : 8 * 60;
-    setDraft({ id: null, day: d, start: hhmm(start), end: hhmm(start + 90), title: "", room: "", color: LECTURE_COLORS[0] });
+    setDraft({ id: null, day: d, start: hhmm(start), end: hhmm(start + 90), title: "", room: "", color: LECTURE_COLORS[0], projectId: "" });
     setConfirmDel(false);
   };
 
@@ -54,7 +55,7 @@ export default function Timetable({ lectures, onChange, week, onWeek, projectFor
 
   const save = () => {
     if (!draft || !valid) return;
-    const l: Lecture = { id: draft.id ?? uid(), day: draft.day, start, end, title: draft.title.trim(), room: draft.room.trim(), color: draft.color };
+    const l: Lecture = { id: draft.id ?? uid(), day: draft.day, start, end, title: draft.title.trim(), room: draft.room.trim(), color: draft.color, ...(draft.projectId && { projectId: draft.projectId }) };
     onChange(draft.id ? lectures.map(x => (x.id === draft.id ? l : x)) : [...lectures, l]);
     if (!week) setDay(l.day);
     setDraft(null);
@@ -72,14 +73,14 @@ export default function Timetable({ lectures, onChange, week, onWeek, projectFor
     const isToday = l.day === today;
     const running = isToday && l.start <= now && now < l.end;
     const past = isToday && now >= l.end;
-    const project = projectFor(l.title);
+    const project = projectFor(l);
     const clickable = editing || !!project;
     return (
       <button
         key={l.id}
         className={["lec", running && "now", past && !editing && "past", clickable && "linked", editing && "editable"].filter(Boolean).join(" ")}
         style={{ "--lec": l.color, ...style } as CSSProperties}
-        onClick={() => (editing ? openEdit(l) : project && onOpen(l.title))}
+        onClick={() => (editing ? openEdit(l) : project && onOpen(l))}
         title={editing ? t("Bearbeiten") : project ? t("Zu Projekt „{name}“ wechseln", { name: project }) : undefined}
         disabled={!clickable}
       >
@@ -142,6 +143,17 @@ export default function Timetable({ lectures, onChange, week, onWeek, projectFor
             </select>
           </label>
         </div>
+        {projects.length > 0 && (
+          <label className="field">
+            {t("Fach (Projekt)")}
+            <select value={draft.projectId} onChange={e => setDraft({ ...draft, projectId: e.target.value })}>
+              <option value="">{t("automatisch über den Namen")}</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="field-row">
           <label className="field">
             {t("Beginn")}

@@ -2042,6 +2042,120 @@ mark {
   stroke-linejoin: round;
 }
 
+/* ---------- Heutige Vorlesung ---------- */
+
+.lnote {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 5%, #fff);
+}
+.lnote-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+.lnote-close {
+  margin-left: 4px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.lnote-close:hover {
+  background: color-mix(in srgb, var(--muted) 15%, transparent);
+  color: inherit;
+}
+.lnote-head strong + .lnote-close {
+  margin-left: auto;
+}
+.lnote-done {
+  font-weight: 600;
+  color: var(--accent);
+}
+.lnote-open .lnote-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lnote-hint {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.lnote-row {
+  display: flex;
+  gap: 6px;
+}
+.lnote-row > .new {
+  flex: 1;
+  min-width: 0;
+}
+.lnote-slide {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.lnote-slide .new {
+  width: 52px;
+  text-align: center;
+}
+.lnote-note {
+  resize: vertical;
+  min-height: 40px;
+  font: inherit;
+  line-height: 1.4;
+}
+.lnote-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lnote-actions .lnote-hint {
+  margin-left: 0;
+}
+.lnote-saved {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.lnote-open {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.lnote-open:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.cal-item.lecture.linked {
+  cursor: pointer;
+}
+
 /* ---------- Logbuch ---------- */
 
 .logbook {

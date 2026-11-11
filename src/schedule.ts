@@ -3,7 +3,8 @@ import { lang } from "./i18n";
 // Stundenplan. Zeiten in Minuten ab Mitternacht, Tage 1 = Montag … 5 = Freitag.
 // Die Vorlesungen liegen in den gespeicherten Daten.
 
-export type Lecture = { id: string; day: number; start: number; end: number; title: string; room: string; color: string };
+// projectId: fest verknüpftes Fach (sonst wird über den Namen gesucht)
+export type Lecture = { id: string; day: number; start: number; end: number; title: string; room: string; color: string; projectId?: string };
 
 export const toMin = (s: string) => {
   const [h, m] = s.split(":").map(Number);

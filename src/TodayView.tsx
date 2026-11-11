@@ -21,6 +21,8 @@ type Props = {
   onComplete: (task: Task, e: ReactMouseEvent<HTMLButtonElement>) => void;
   onOpen: (task: Task) => void;
   onOpenDay: (date: string) => void;
+  lectureProject: (l: Lecture) => string | null; // Name des verknüpften Fachs
+  onOpenLecture: (l: Lecture) => void;
 };
 
 // Offene Aufgaben mit Fälligkeit heute oder früher; Überfälliges zuerst, dann nach Priorität
@@ -29,7 +31,7 @@ export const dueToday = (tasks: Task[]) =>
     .filter(t => !t.doneAt && t.due && daysUntil(t.due) <= 0)
     .sort((a, b) => a.due!.localeCompare(b.due!) || (b.prio ?? 0) - (a.prio ?? 0) || a.order - b.order);
 
-export default function TodayView({ tasks, projects, events, lectures, leaving, wearFor, onComplete, onOpen, onOpenDay }: Props) {
+export default function TodayView({ tasks, projects, events, lectures, leaving, wearFor, onComplete, onOpen, onOpenDay, lectureProject, onOpenLecture }: Props) {
   const today = iso(new Date());
   const due = dueToday(tasks).filter(t => projects.some(p => p.id === t.projectId));
   const late = due.filter(t => daysUntil(t.due!) < 0);
@@ -90,13 +92,23 @@ export default function TodayView({ tasks, projects, events, lectures, leaving, 
               {e.place && <span className="cal-sub">{e.place}</span>}
             </button>
           ))}
-          {dayLectures.map(l => (
-            <div key={l.id} className="cal-item lecture" style={{ "--lec": l.color } as CSSProperties}>
-              <span className="cal-time">{hm(l.start)}–{hm(l.end)}</span>
-              <span className="cal-title">{l.title}</span>
-              <span className="cal-sub">{l.room}</span>
-            </div>
-          ))}
+          {dayLectures.map(l => {
+            const p = lectureProject(l);
+            return (
+              <button
+                key={l.id}
+                className={p ? "cal-item lecture linked" : "cal-item lecture"}
+                style={{ "--lec": l.color } as CSSProperties}
+                onClick={() => p && onOpenLecture(l)}
+                disabled={!p}
+                title={p ? t("Zu Projekt „{name}“ wechseln", { name: p }) : undefined}
+              >
+                <span className="cal-time">{hm(l.start)}–{hm(l.end)}</span>
+                <span className="cal-title">{l.title}</span>
+                <span className="cal-sub">{l.room}</span>
+              </button>
+            );
+          })}
         </section>
       )}
 

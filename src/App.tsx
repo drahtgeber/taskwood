@@ -17,7 +17,8 @@ import Timetable from "./Timetable";
 import { cliTask, exportWithDialog, importWithDialog, quitApp, readBackupFile, writeBackupFile } from "./backup";
 import Calendar from "./Calendar";
 import { activeAppointments, countdown, dueReminders, upcomingExams } from "./events";
-import { currentOrNext, hm } from "./schedule";
+import { currentOrNext, hm, lecturesOn, weekday } from "./schedule";
+import type { Lecture } from "./schedule";
 import { parseIcs } from "./ics";
 import TodayView, { dueToday } from "./TodayView";
 import SearchView from "./SearchView";
@@ -42,6 +43,7 @@ import SketchEditor from "./SketchEditor";
 import LogMonth from "./LogMonth";
 import { LOG_COLOR, dayOf, logDots, sinceLabel } from "./logbook";
 import ListImport from "./ListImport";
+import LectureBox from "./LectureBox";
 import { applyPlan, looksLikeList, parseList } from "./markdownList";
 import type { PlanGroup } from "./markdownList";
 import "./App.css";
@@ -521,14 +523,31 @@ export default function App() {
     fitWindow(size.w, size.h);
   }, [wide, settings.large]);
 
-  // Stundenplan: passendes Projekt zu einer Vorlesung (gleicher Name, oder einer enthält den anderen)
-  const projectForLecture = (title: string) => {
-    const t = title.toLowerCase();
-    return (
-      data.projects.find(p => p.name.toLowerCase() === t) ??
-      data.projects.find(p => p.name.toLowerCase().includes(t) || t.includes(p.name.toLowerCase()))
-    );
+  // Stundenplan: Projekt zu einer Vorlesung. Fest verknüpft, sonst über den Namen
+  // (Groß-/Kleinschreibung, Leer- und Sonderzeichen egal; gleich, oder einer enthält den anderen)
+  const projectForLecture = (l: Lecture) => {
+    const linked = l.projectId ? data.projects.find(p => p.id === l.projectId) : undefined;
+    if (linked) return linked;
+    const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    const n = norm(l.title);
+    if (!n) return undefined;
+    const named = data.projects.map(p => ({ p, k: norm(p.name) })).filter(x => x.k);
+    return named.find(x => x.k === n)?.p ?? named.find(x => x.k.includes(n) || n.includes(x.k))?.p;
   };
+  const openLecture = (l: Lecture) => {
+    const p = projectForLecture(l);
+    if (!p) return;
+    selectProject(p);
+    setWeek(false);
+    setView("list");
+  };
+  // Hat dieses Projekt heute laut Stundenplan Vorlesung?
+  const lectureTodayFor = (projectId: string) => {
+    const day = weekday();
+    return !!day && lecturesOn(data.lectures, day).some(l => projectForLecture(l)?.id === projectId);
+  };
+  // Studienfächer zuerst in der Auswahl
+  const isStudy = (p: Project) => /^(studium|uni|universität|university|hochschule)$/i.test(data.folders.find(f => f.id === p.folderId)?.name.trim() ?? "");
 
   // Kopfzeile: ziehen, aber Buttons und Eingabefelder ausnehmen
   const dragHeader = (e: ReactMouseEvent) => {
@@ -1895,14 +1914,9 @@ ${t(lec.now ? "Jetzt" : "Als Nächstes")}: ${lec.lecture.title}, ${lec.lecture.r
           onChange={lectures => setData(d => ({ ...d, lectures }))}
           week={week}
           onWeek={setWeek}
-          projectFor={title => projectForLecture(title)?.name ?? null}
-          onOpen={title => {
-            const p = projectForLecture(title);
-            if (!p) return;
-            selectProject(p);
-            setWeek(false);
-            setView("list");
-          }}
+          projects={[...data.projects.filter(isStudy), ...data.projects.filter(p => !isStudy(p))].map(p => ({ id: p.id, name: p.name }))}
+          projectFor={l => projectForLecture(l)?.name ?? null}
+          onOpen={openLecture}
         />
       ) : view === "today" ? (
         <TodayView
@@ -1919,6 +1933,8 @@ ${t(lec.now ? "Jetzt" : "Als Nächstes")}: ${lec.lecture.title}, ${lec.lecture.r
             setPlanTab("month");
             setView("plan");
           }}
+          lectureProject={l => projectForLecture(l)?.name ?? null}
+          onOpenLecture={openLecture}
         />
       ) : view === "search" ? (
         <SearchView
@@ -1998,6 +2014,15 @@ ${t(lec.now ? "Jetzt" : "Als Nächstes")}: ${lec.lecture.title}, ${lec.lecture.r
                 </>
               )}
             </section>
+          )}
+          {/^(studium|uni|universität|university|hochschule)$/i.test(folder.name.trim()) && (
+            <LectureBox
+              key={project.id}
+              projectId={project.id}
+              notes={data.lectureNotes}
+              onChange={lectureNotes => setData(d => ({ ...d, lectureNotes }))}
+              lectureToday={lectureTodayFor(project.id)}
+            />
           )}
           <input
             className="new"

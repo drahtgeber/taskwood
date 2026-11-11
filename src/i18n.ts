@@ -446,6 +446,20 @@ const EN: Record<string, string> = {
   Kleiner: "Smaller",
   Größer: "Bigger",
 
+  // ---------- Heutige Vorlesung ----------
+  "Heutige Vorlesung": "Today's lecture",
+  "Heutige Vorlesung eintragen": "Add today's lecture",
+  Thema: "Topic",
+  "bis Folie": "up to slide",
+  "letztes Mal bis Folie {n}": "last time up to slide {n}",
+  "Notiz (optional)": "Note (optional)",
+  Gespeichert: "Saved",
+  "Nicht gespeichert": "Not saved",
+  "Schließen (Änderungen verwerfen)": "Close (discard changes)",
+  "bis Folie {n}": "up to slide {n}",
+  "Fach (Projekt)": "Subject (project)",
+  "automatisch über den Namen": "automatic by name",
+
   // ---------- Logbuch ----------
   Logbuch: "Daily Log",
   "Logbuch · {name}": "Daily Log · {name}",
