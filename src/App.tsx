@@ -44,7 +44,7 @@ import LogMonth from "./LogMonth";
 import { LOG_COLOR, dayOf, logDots, sinceLabel } from "./logbook";
 import ListImport from "./ListImport";
 import LectureBox from "./LectureBox";
-import { applyPlan, looksLikeList, parseList } from "./markdownList";
+import { applyPlan, looksLikeList } from "./markdownList";
 import type { PlanGroup } from "./markdownList";
 import "./App.css";
 import "./extras.css";
@@ -1061,13 +1061,14 @@ export default function App() {
   const openListImportRef = useRef(openListImport);
   openListImportRef.current = openListImport;
 
-  // Aus dem Menü: Zwischenablage direkt lesen; klappt das nicht, erscheint ein Feld zum Einfügen
+  // Aus dem Menü: Zwischenablage nur übernehmen, wenn sie wirklich nach einer Liste aussieht
+  // (sonst landete z. B. ein kopierter Chatverlauf zeilenweise als Aufgaben in der Vorschau); sonst leeres Feld zum Einfügen
   const pasteList = async () => {
     let text = "";
     try {
       text = await navigator.clipboard.readText();
     } catch {}
-    openListImport(parseList(text).count ? text : "");
+    openListImport(looksLikeList(text) ? text : "");
   };
 
   const applyListImport = (pl: PlanGroup[], skipDups: boolean) => {
